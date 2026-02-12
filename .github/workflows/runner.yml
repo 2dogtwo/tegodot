@@ -31,6 +31,10 @@ jobs:
     name: 🏁 Windows
     uses: ./.github/workflows/windows_builds.yml
 
+  windowsmsvc-build:
+    name: 🏁 Windowsmsvc
+    uses: ./.github/workflows/windows_msvcbuilds.yml
+
   # web-build:
   #   name: 🌐 Web
   #   uses: ./.github/workflows/web_builds.yml
@@ -45,6 +49,18 @@ jobs:
   windowsMono_msvn-build:
     name: 🏁 windowsMono_msvn
     uses: ./.github/workflows/windowsMono_msvc_builds.yml
+
+  linuxMono-build:
+    name: 🏁 linuxMono
+    uses: ./.github/workflows/linuxMono_builds.yml
+
+  linuxx86_64_build:
+    name: 🏁  linuxx86_64
+    uses: ./.github/workflows/linuxx86_64_builds.yml
+
+  linuxMonox86_64-build:
+    name: 🏁 linuxMonox86_64
+    uses: ./.github/workflows/linuxx86_64Mono_builds.yml
 
   linuxMono-build:
     name: 🏁 linuxMono
