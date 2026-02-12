@@ -1,0 +1,116 @@
+name: 🍎 macOS Builds
+on:
+  workflow_call:
+  workflow_dispatch:
+    
+permissions:
+  contents: write
+ 
+# Global Settings
+env:
+  SCONS_FLAGS: >-
+    disable_xr=yes 
+    engine_update_check=no 
+    module_camera_enabled=no 
+    module_mobile_vr_enabled=no 
+    module_openxr_enabled=no 
+    module_webxr_enabled=no 
+    vulkan=no  
+
+jobs:
+  build-macos:
+    # From https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job#choosing-github-hosted-runners
+    runs-on: macos-latest
+    name: ${{ matrix.name }}
+    timeout-minutes: 220
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Editor (target=editor)
+            cache-name: macos-editor
+            target: editor
+            bin: ./bin/godot.macos.editor.universal
+
+          - name: Template (target=template_release)
+            cache-name: macos-template
+            target: template_release
+            scons-flags: debug_symbols=no
+            bin: ./bin/godot.macos.template_release.universal
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      # From https://github.com/actions/runner-images/blob/main/images/macos
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.0.1.app
+
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      # - name: Setup Vulkan SDK
+      #   id: vulkan-sdk
+      #   run: |
+      #     if sh misc/scripts/install_vulkan_sdk_macos.sh; then
+      #       echo "VULKAN_ENABLED=yes" >> "$GITHUB_OUTPUT"
+      #     else
+      #       echo "::warning::macOS: Vulkan SDK installation failed, building without Vulkan support."
+      #       echo "VULKAN_ENABLED=no" >> "$GITHUB_OUTPUT"
+      #     fi
+      #   continue-on-error: true
+
+      # - name: Compilation (x86_64)
+      #   uses: ./.github/actions/godot-build
+      #   with:
+      #     scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} arch=x86_64 vulkan=${{ steps.vulkan-sdk.outputs.VULKAN_ENABLED }}
+      #     platform: macos
+      #     target: ${{ matrix.target }}
+
+      - name: Compilation (x86_64)
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} arch=x86_64
+          platform: macos
+          target: ${{ matrix.target }}
+
+      - name: Compilation (arm64)
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} arch=arm64
+          platform: macos
+          target: ${{ matrix.target }}
+
+
+      - name: Prepare artifact
+        run: |
+          lipo -create ./bin/godot.macos.${{ matrix.target }}.x86_64 ./bin/godot.macos.${{ matrix.target }}.arm64 -output ./bin/godot.macos.${{ matrix.target }}.universal
+          rm ./bin/godot.macos.${{ matrix.target }}.x86_64 ./bin/godot.macos.${{ matrix.target }}.arm64
+          strip bin/godot.*
+          chmod +x bin/godot.*
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.cache-name }}
+
+      - name: Zip artifacts
+        run: |
+          mkdir -p zipbin/
+          zip -r9  "zipbin/${{ matrix.cache-name }}.zip" bin/*
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: macos-gd-Builds
+          files: |
+            zipbin/*.zip
+
+      - name: Unit tests
+        run: |
+          ${{ matrix.bin }} --version
+          ${{ matrix.bin }} --help
+

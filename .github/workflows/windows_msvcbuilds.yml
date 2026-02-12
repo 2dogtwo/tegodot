@@ -1,0 +1,191 @@
+name: 🏁 Windows gd-msvc Builds
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: write
+ 
+# Global Settings
+env:
+  SCONS_FLAGS: >-
+    disable_xr=yes 
+    engine_update_check=no 
+    module_camera_enabled=no 
+    module_mobile_vr_enabled=no 
+    module_openxr_enabled=no 
+    module_webxr_enabled=no 
+    windows_subsystem=gui
+    vulkan=no  
+    debug_symbols=no
+    vsproj=yes
+    vsproj_gen_only=no
+  SCONS_CACHE_MSVC_CONFIG: true
+  PYTHONIOENCODING: utf8
+
+jobs:
+  build-windows:
+    # Windows 10 with latest image
+    runs-on: windows-latest
+    name: ${{ matrix.name }}
+    timeout-minutes: 400
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Editor w/ clang-ltolld
+            cache-name: windows-gd-editor-msvc-ltolld
+            target: editor
+            scons-flags: >-              
+              lto=full
+              linker=lld
+            bin: ./bin/godot.windows.editor.x86_64.exe
+            compiler: msvc
+
+          - name: Editor w/ clang-all
+            cache-name: windows-gd-editor-msvc-all
+            target: editor   
+            scons-flags: >-
+              lto=full       
+              linker=lld       
+              use_llvm=yes   
+            bin: ./bin/godot.windows.editor.x86_64.llvm.exe
+            build-mono: true
+            compiler: msvc
+
+          - name: Editor w/ clang-thinall
+            cache-name: windows-gd-editor-msvc-thinall
+            target: editor   
+            scons-flags: >-
+              lto=thin       
+              linker=lld       
+              use_llvm=yes   
+            bin: ./bin/godot.windows.editor.x86_64.llvm.exe
+            build-mono: true
+            compiler: msvc
+
+          - name: Editor w/ clang-jllvm
+            cache-name: windows-gd-editor-msvc-jllvm
+            target: editor
+            scons-flags: >-              
+              use_llvm=yes              
+            bin: ./bin/godot.windows.editor.x86_64.llvm.exe
+            build-mono: true
+            compiler: msvc
+
+          - name: Editor w/ clang-lldllvm
+            cache-name: windows-gd-editor-msvc-lldllvm
+            target: editor
+            scons-flags: >-              
+              linker=lld
+              use_llvm=yes   
+            bin: ./bin/godot.windows.editor.x86_64.llvm.exe
+            build-mono: true
+            compiler: msvc            
+
+
+
+          - name: Template Mono, clangrelease ltolld
+            cache-name: windows-gd-template-msvc-ltolld
+            target: template_release
+            scons-flags: >-              
+              linker=lld
+              lto=full
+            bin: ./bin/godot.windows.template_release.x86_64.exe
+            compiler: msvc
+
+          - name: Template Mono, release all
+            cache-name: windows-gd-template-msvc-all
+            target: template_release
+            scons-flags: >-
+              lto=full          
+              linker=lld    
+              use_llvm=yes   
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.exe
+            compiler: msvc
+
+          - name: Template Mono, release thinall
+            cache-name: windows-gd-template-msvc-thinall
+            target: template_release
+            scons-flags: >-
+              lto=thin          
+              linker=lld    
+              use_llvm=yes   
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.exe
+            compiler: msvc
+
+          - name: Template Mono, release jllvm
+            cache-name: windows-gd-template-msvc-jllvm
+            target: template_release
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.exe
+            scons-flags: use_llvm=yes
+            compiler: msvc
+
+          - name: Template Mono, release lldllvm
+            cache-name: windows-gd-template-msvc-lldllvm
+            target: template_release
+            scons-flags: >-     
+              use_llvm=yes
+              linker=lld              
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.exe
+            compiler: msvc            
+
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        shell: sh
+        id: d3d12-sdk
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "D3D12_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Windows: Direct3D 12 SDK installation failed, building without Direct3D 12 support."
+            echo "D3D12_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} d3d12=${{ steps.d3d12-sdk.outputs.D3D12_ENABLED }}
+          platform: windows
+          target: ${{ matrix.target }}
+
+      - name: Prepare artifact
+        run: |
+          Remove-Item bin/* -Include *.exp,*.lib,*.pdb -Force
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.cache-name }}
+
+      - name: Zip artifacts
+        run: |
+          New-Item -ItemType Directory -Path "zipbin/" -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
+          [System.IO.Compression.ZipFile]::CreateFromDirectory("bin", "zipbin/${{ matrix.cache-name }}.zip", $compressionLevel, $false)
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-gd-Builds
+          files: |
+            zipbin/*.zip
+
+      - name: Unit tests
+        run: |
+          ${{ matrix.bin }} --version
+          ${{ matrix.bin }} --help
+          ${{ matrix.bin }} --test --force-colors
+        continue-on-error: true

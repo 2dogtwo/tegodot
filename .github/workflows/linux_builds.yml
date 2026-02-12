@@ -1,0 +1,280 @@
+name: 🐧 Linux gd- Builds
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: write
+ 
+# Global Settings
+env:
+  SCONS_FLAGS: >-
+    disable_xr=yes 
+    engine_update_check=no 
+    module_camera_enabled=no 
+    module_mobile_vr_enabled=no 
+    module_openxr_enabled=no 
+    module_webxr_enabled=no 
+    vulkan=no  
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  ASAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/asan.txt
+  LSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/lsan.txt
+  TSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/tsan.txt
+  UBSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/ubsan.txt
+
+jobs:
+  build-linux:
+    # Stay one LTS before latest to increase portability of Linux artifacts.
+    runs-on: ubuntu-22.04-arm
+    name: ${{ matrix.name }}
+    timeout-minutes: 420
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-editor-gd-jllvm
+            cache-name: linux-editor-gd-jllvm
+            target: editor
+            scons-flags: use_llvm=yes
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            
+            
+            
+          - name: linux-editor-gd-thinall
+            cache-name: linux-editor-gd-thinall
+            target: editor
+            scons-flags: >-             
+              use_llvm=yes
+              linker=lld
+              lto=thin
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary editor build.
+
+            #  The hosted runner lost communication with the server. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error. 
+          # - name: linux-editor-gd-all
+          #   cache-name: linux-editor-gd-all
+          #   target: editor
+          #   scons-flags: >-             
+          #     use_llvm=yes
+          #     linker=lld
+          #     lto=full
+          #   bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            
+          - name: linux-editor-gd-lldllvm
+            cache-name: linux-editor-gd-lldllvm
+            target: editor
+            scons-flags: >-             
+              use_llvm=yes
+              linker=lld
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary editor build.
+            
+            
+          - name: linux-editor-gd-thinllvm
+            cache-name: linux-editor-gd-thinllvm
+            target: editor
+            scons-flags: >-             
+              lto=thin
+              use_llvm=yes
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary editor build.
+            
+       
+          - name: linux-editor-gd-mold
+            cache-name: linux-editor-gd-mold
+            target: editor
+            scons-flags: >-             
+              use_llvm=yes
+              linker=mold
+              lto=none
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary editor build.
+            
+            proj-test: true
+           
+          - name: linux-editor-gd-thinmold
+            cache-name: linux-editor-gd-thinmold
+            target: editor
+            scons-flags: >-             
+              use_llvm=yes
+              linker=mold
+              lto=thin
+            bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary editor build.
+            
+            proj-test: true
+
+          
+#out of memory
+          # - name: linux-editor-gd-fullmold
+          #   cache-name: linux-editor-gd-fullmold
+          #   target: editor
+          #   scons-flags: >-             
+          #     use_llvm=yes
+          #     linker=mold
+          #     lto=full
+          #   bin: ./bin/godot.linuxbsd.editor.arm64.llvm
+            # proj-test: true
+                               
+    
+           
+           
+            
+          - name: linux-template_release-gd-jllvm
+            cache-name: linux-template_release-gd-jllvm
+            target: template_release
+            scons-flags: use_llvm=yes
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+          
+            
+            
+          - name: linux-template_release-gd-thinall
+            cache-name: linux-template_release-gd-thinall
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=lld
+              lto=thin
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+           
+          - name: linux-template_release-gd-all
+            cache-name: linux-template_release-gd-all
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=lld
+              lto=full
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+           
+          - name: linux-template_release-gd-lldllvm 
+            cache-name: linux-template_release-gd-lldllvm
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=lld
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+           
+            
+          - name: linux-template_release-gd-thinllvm
+            cache-name: linux-template_release-gd-thinllvm
+            target: template_release
+            scons-flags: >-             
+              lto=thin
+              use_llvm=yes
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+           
+       
+          - name: linux-template_release-gd-mold
+            cache-name: linux-template_release-gd-mold
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=mold
+              lto=none
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+            proj-test: true
+           
+          - name: linux-template_release-gd-thinmold
+            cache-name: linux-template_release-gd-thinmold
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=mold
+              lto=thin
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+            proj-test: true
+
+          - name: linux-template_release-gd-fullmold
+            cache-name: linux-template_release-gd-fullmold
+            target: template_release
+            scons-flags: >-             
+              use_llvm=yes
+              linker=mold
+              lto=full
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+            # Test our oldest supported SCons/Python versions on one arbitrary template_release build.
+            proj-test: true
+     
+          - name: linux-template-gd-fullall
+            cache-name: linux-template-gd-fullall
+            target: template_release
+            scons-flags: >-             
+              lto=full
+              use_llvm=yes
+              linker=lld
+            bin: ./bin/godot.linuxbsd.template_release.arm64.llvm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install libwayland-bin  # TODO: Figure out somehow how to embed this one.
+
+      - name: Free disk space on runner
+        run: |
+          echo "Disk usage before:" && df -h
+          sudo rm -rf /usr/local/lib/android
+          echo "Disk usage after:" && df -h
+
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+        with:
+          # Sync with Ensure*Version in SConstruct.
+          python-arch: arm64
+
+
+
+      - name: Install mold linker
+        if: matrix.proj-test
+        uses: rui314/setup-mold@v1
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
+          platform: linuxbsd
+          target: ${{ matrix.target }}
+
+
+
+
+      - name: Prepare artifact
+        run: |
+          strip bin/godot.*
+          chmod +x bin/godot.*
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.cache-name }}
+
+      - name: Zip artifacts
+        run: |
+          mkdir -p zipbin/
+          zip -r9  "zipbin/${{ matrix.cache-name }}.zip" bin/*
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: linuxbsd-gd-Builds
+          files: |
+            zipbin/*.zip
+
+
+      - name: Unit tests
+        run: |
+          ls -la bin/
+          ${{ matrix.bin }} --version
+          ${{ matrix.bin }} --help
+

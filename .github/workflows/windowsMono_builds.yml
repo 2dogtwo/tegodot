@@ -1,0 +1,203 @@
+name: 🏁 Windows Mono Builds
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: write
+ 
+# Global Settings
+env:
+  SCONS_FLAGS: >-
+    disable_xr=yes 
+    engine_update_check=no 
+    module_camera_enabled=no 
+    module_mobile_vr_enabled=no 
+    module_openxr_enabled=no 
+    module_webxr_enabled=no 
+    module_mono_enabled=yes
+    windows_subsystem=gui
+    vulkan=no  
+  SCONS_CACHE_MSVC_CONFIG: true
+  PYTHONIOENCODING: utf8
+
+jobs:
+  build-windows:
+    # Windows 10 with latest image
+    runs-on: windows-latest
+    name: ${{ matrix.name }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+ #     max-parallel: 1
+      matrix:
+        include:
+          - name: Editor w/ clang-ltolld
+            cache-name: windows-mono-editor-clang-ltolld
+            target: editor
+            scons-flags: >-              
+              lto=full
+              linker=lld
+            bin: ./bin/godot.windows.editor.x86_64.mono.exe
+            build-mono: true
+            compiler: clang
+
+          # - name: Editor w/ clang-ltollvm
+          #   cache-name: windows-mono-editor-clang-ltollvm
+          #   target: editor   
+          #   scons-flags: >-
+          #     lto=full              
+          #     use_llvm=yes   
+          #   bin: ./bin/godot.windows.editor.x86_64.llvm.mono.exe
+          #   build-mono: true
+          #   compiler: clang
+
+          - name: Editor w/ clang-jllvm
+            cache-name: windows-mono-editor-clang-jllvm
+            target: editor
+            scons-flags: >-              
+              use_llvm=yes              
+            bin: ./bin/godot.windows.editor.x86_64.llvm.mono.exe
+            build-mono: true
+            compiler: clang
+
+          - name: Editor w/ clang-lldllvm
+            cache-name: windows-mono-editor-clang-lldllvm
+            target: editor
+            scons-flags: >-              
+              linker=lld
+              use_llvm=yes   
+            bin: ./bin/godot.windows.editor.x86_64.llvm.mono.exe
+            build-mono: true
+            compiler: clang            
+
+
+
+          - name: Template Mono, clangrelease ltolld
+            cache-name: windows-mono-templateclang-ltolld
+            target: template_release
+            scons-flags: >-              
+              linker=lld
+              lto=full
+            bin: ./bin/godot.windows.template_release.x86_64.mono.exe
+            compiler: clang
+
+          # - name: Template Mono, release ltollvm
+          #   cache-name: windows-mono-templateclang-ltollvm
+          #   target: template_release
+          #   scons-flags: >-
+          #     lto=full              
+          #     use_llvm=yes   
+          #   bin: ./bin/godot.windows.template_release.x86_64.llvm.mono.exe
+          #   compiler: clang
+
+          - name: Template Mono, release jllvm
+            cache-name: windows-mono-templateclang-jllvm
+            target: template_release
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.mono.exe
+            scons-flags: use_llvm=yes
+            compiler: clang
+
+          - name: Template Mono, release lldllvm
+            cache-name: windows-mono-templateclang-lldllvm
+            target: template_release
+            scons-flags: >-     
+              use_llvm=yes
+              linker=lld              
+            bin: ./bin/godot.windows.template_release.x86_64.llvm.mono.exe
+            compiler: clang            
+
+    
+
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        shell: sh
+        id: d3d12-sdk
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "D3D12_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Windows: Direct3D 12 SDK installation failed, building without Direct3D 12 support."
+            echo "D3D12_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+
+      - name: Setup older .NET SDK as baseline
+        uses: actions/setup-dotnet@v5
+        id: stepid
+        with:
+          dotnet-version: 8.0.416
+      - run: echo '${{ steps.stepid.outputs.dotnet-version }}' # outputs 8.0.416
+            
+
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} d3d12=${{ steps.d3d12-sdk.outputs.D3D12_ENABLED }}
+          platform: windows
+          target: ${{ matrix.target }}
+
+      - name: Output file contents on failure
+        if: failure()
+        run: |          
+          sconsign -r .sconsign
+          cat  .sconsign
+        
+      - name: Prepare artifact        
+        run: |
+          Remove-Item bin/* -Include *.exp,*.lib,*.pdb  -Force
+          Get-ChildItem  bin/ -Recurse  -Force
+          Get-ChildItem  ./ -Recurse  -Force
+        continue-on-error: true
+        
+      - name: Generate C# glue
+        if: matrix.build-mono
+        run: |          
+          ${{ matrix.bin }} --headless --generate-mono-glue ./modules/mono/glue
+          
+
+      - name: Build .NET solutions
+        if: matrix.build-mono
+        run: |
+          dotnet --info
+          python ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=windows --push-nupkgs-local=./bin/nupkgs --werror
+          
+
+
+      - name: Upload artifact
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.cache-name }}
+
+      - name: Zip artifacts
+        run: |
+          New-Item -ItemType Directory -Path "zipbin/" -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
+          [System.IO.Compression.ZipFile]::CreateFromDirectory("bin", "zipbin/${{ matrix.cache-name }}.zip", $compressionLevel, $false)
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-mono-Builds
+          files: |
+            zipbin/*.zip
+
+      - name: Unit tests
+        run: |
+          ${{ matrix.bin }} --version
+          ${{ matrix.bin }} --help
+          ${{ matrix.bin }} --test --force-colors
+          ${{ matrix.bin }} --doctool --headless
+        continue-on-error: true
